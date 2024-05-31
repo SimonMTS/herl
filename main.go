@@ -5,25 +5,28 @@ import (
 	"flag"
 	"fmt"
 	"os"
+
+	"s14.nl/herl/pkg/notify"
+	"s14.nl/herl/pkg/serve"
 )
 
 // TODO: rename all websocket/ws specific language
 
 var (
-	notify    bool
-	serve     bool
-	origin    string
-	proxyBind string
-	wsBind    string
-	quiet     bool
+	notifyFlag bool
+	serveFlag  bool
+	origin     string
+	proxyBind  string
+	wsBind     string
+	quiet      bool
 )
 
 func main() {
-	flag.BoolVar(&notify, "notify", false,
+	flag.BoolVar(&notifyFlag, "notify", false,
 		"Notify the proxy server that it should reload.")
-	flag.BoolVar(&notify, "n", false, "")
+	flag.BoolVar(&notifyFlag, "n", false, "")
 
-	flag.BoolVar(&serve, "serve", false,
+	flag.BoolVar(&serveFlag, "serve", false,
 		"Start the proxy server.")
 
 	flag.StringVar(&origin, "origin",
@@ -53,7 +56,7 @@ func main() {
 }
 
 func run() error {
-	if serve && notify {
+	if serveFlag && notifyFlag {
 		return errors.New(
 			"-serve and -notify (-n) are mutually exclusive" +
 				"see -help for details")
@@ -64,9 +67,9 @@ func run() error {
 		return errors.New(
 			"one of -serve or -notify (-n) must be specified, " +
 				"see -help for details")
-	case notify:
-		return doNotify()
-	case serve:
-		return doServe()
+	case notifyFlag:
+		return notify.Notify(wsBind)
+	case serveFlag:
+		return serve.Serve(quiet, wsBind, proxyBind, origin)
 	}
 }

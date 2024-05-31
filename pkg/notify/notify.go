@@ -1,4 +1,4 @@
-package main
+package notify
 
 import (
 	"errors"
@@ -6,8 +6,8 @@ import (
 	"net/http"
 )
 
-func doNotify() error {
-	resp, err := http.Post("http://"+wsBind, "", nil)
+func Notify(url string) error {
+	resp, err := http.Post("http://"+url, "", nil)
 	if err != nil {
 		return errors.Join(
 			errors.New("failed to reach the notification server, "+
