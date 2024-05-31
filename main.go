@@ -7,9 +7,6 @@ import (
 	"os"
 )
 
-// TODO: could this work for file:// ?
-// TODO: might need a delay to work with entr
-//       or some other/better solution
 // TODO: rename all websocket/ws specific language
 
 var (
@@ -18,6 +15,7 @@ var (
 	origin    string
 	proxyBind string
 	wsBind    string
+	quiet     bool
 )
 
 func main() {
@@ -41,6 +39,9 @@ func main() {
 	flag.StringVar(&wsBind, "ws-addr",
 		"127.0.0.1:3031",
 		"The address the websocket server binds to.\n")
+
+	flag.BoolVar(&quiet, "quiet", false,
+		"Do not output anything to stdout.")
 
 	flag.Parse()
 

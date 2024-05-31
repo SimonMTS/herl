@@ -11,123 +11,178 @@ import (
 	"time"
 )
 
-var script []byte = []byte(`
+// TODO: split up more
+// TODO: origin without protocol causes crashes, and probably some more stuff
+// TODO: try not to force 'http' in script
+
+const (
+	retryTimeout = time.Millisecond * 10
+	retryMaxTime = time.Second * 10
+	retries      = int(retryMaxTime / retryTimeout)
+)
+
+const scriptTmpl = `
 <script>
 	/* Added by herl */
 	document.addEventListener("DOMContentLoaded", () =>
-		(new EventSource("http://127.0.0.1:3031/herl-events"))
+		(new EventSource("http://%s/herl-events"))
 			.addEventListener("refresh", () => location.reload()))
 </script>
-`)
+</body>
+`
 
-// TODO: split up more
-// TODO: error handling
-func doServe() error {
-	wg := sync.WaitGroup{}
+var (
+	events    = make(chan struct{})
+	listeners = 0
+)
 
-	// Start proxy server
+func doServe() (err error) {
+	wg := &sync.WaitGroup{}
+
 	wg.Add(1)
-	go func() error {
-		proxyMux := http.NewServeMux()
-		proxyMux.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {
-			url, _ := url.Parse(origin)
-			req.URL.Scheme = url.Scheme
-			req.URL.Host = url.Host
-			req.URL.Path = url.Path
-			req.RequestURI = ""
-			req.Header.Set("X-Forwarded-For", req.RemoteAddr)
-
-			var resp *http.Response
-			var err error
-			for i := range 100000 {
-				resp, err = http.DefaultClient.Do(req)
-				if err == nil {
-					_ = i
-					// fmt.Println(i)
-					break
-				}
-				time.Sleep(time.Millisecond * 10)
-			}
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			// TODO: copy over headers
-			w.WriteHeader(resp.StatusCode)
-
-			body, err := io.ReadAll(resp.Body)
-			defer resp.Body.Close()
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			body = bytes.Replace(body, []byte("</body>"), append(script, []byte("</body>")...), 1)
-			_, err = w.Write(body)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-		})
-		fmt.Println("herl: proxy server is running on:", proxyBind)
-		err := http.ListenAndServe(proxyBind, proxyMux)
-		if err != nil {
-			return errors.Join(
-				errors.New("failed to bind to proxy address, "+
-					"this address can be set with the -addr flag"),
-				err)
-		}
-		return nil
+	go func() {
+		err = proxyServer()
+		wg.Done()
 	}()
 
-	// Start websocket server
 	wg.Add(1)
-	go func() error {
-		wsMux := http.NewServeMux()
-		wsMux.HandleFunc("POST /{$}", func(w http.ResponseWriter, r *http.Request) {
-			// fmt.Println("refreshing...")
-			select {
-			case tmp <- struct{}{}:
-			default:
-			}
-		})
-		wsMux.HandleFunc("GET /herl-events", func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Access-Control-Allow-Origin", "*")
-			w.Header().Set("Access-Control-Expose-Headers", "Content-Type")
-
-			w.Header().Set("Content-Type", "text/event-stream")
-			w.Header().Set("Cache-Control", "no-cache")
-			w.Header().Set("Connection", "keep-alive")
-			w.Header().Set("X-Accel-Buffering", "no")
-
-			w.WriteHeader(200)
-
-			_, _ = w.Write([]byte("event: connect\nid: 0\ndata: \n\n"))
-			w.(http.Flusher).Flush()
-
-			i := 0
-			for {
-				i++
-				select {
-				case <-r.Context().Done():
-					return
-				case <-tmp:
-					_, _ = fmt.Fprintf(w, "event: refresh\nid: %d\ndata: \n\n", i)
-					w.(http.Flusher).Flush()
-				}
-			}
-		})
-		err := http.ListenAndServe(wsBind, wsMux)
-		if err != nil {
-			return errors.Join(
-				errors.New("failed to bind to websocket address, "+
-					"this address can be set with the -ws-addr flag"),
-				err)
-		}
-		return nil
+	go func() {
+		err = notificationServer()
+		wg.Done()
 	}()
 
 	wg.Wait()
+	return err
+}
+
+func proxyServer() error {
+	script := fmt.Appendf(nil, scriptTmpl, wsBind)
+
+	proxyMux := http.NewServeMux()
+
+	proxyMux.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {
+		err := prepRequest(req)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		resp, err := callOrigin(req)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		// TODO: copy over headers
+
+		w.WriteHeader(resp.StatusCode)
+
+		body, err := io.ReadAll(resp.Body)
+		defer resp.Body.Close()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		body = bytes.Replace(body, []byte("</body>"), script, 1)
+		_, err = w.Write(body)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	})
+
+	if !quiet {
+		fmt.Println("herl: proxy server is running on:", proxyBind)
+	}
+	err := http.ListenAndServe(proxyBind, proxyMux)
+	if err != nil {
+		return errors.Join(
+			errors.New("failed to bind to proxy address, "+
+				"this address can be set with the -addr flag"),
+			err)
+	}
 	return nil
 }
 
-var tmp = make(chan struct{})
+func prepRequest(req *http.Request) error {
+	url, err := url.Parse(origin)
+	if err != nil {
+		return err
+	}
+	req.URL.Scheme = url.Scheme
+	req.URL.Host = url.Host
+	req.URL.Path = url.Path
+	req.RequestURI = ""
+	req.Header.Set("X-Forwarded-For", req.RemoteAddr)
+	return nil
+}
+
+func callOrigin(req *http.Request) (resp *http.Response, err error) {
+	for range retries {
+		resp, err = http.DefaultClient.Do(req)
+		if err == nil {
+			return resp, nil
+		}
+		time.Sleep(retryTimeout)
+	}
+	return nil, err
+}
+
+func notificationServer() error {
+	wsMux := http.NewServeMux()
+
+	wsMux.HandleFunc("POST /{$}", func(w http.ResponseWriter, _ *http.Request) {
+		for range listeners {
+			select {
+			case events <- struct{}{}:
+			default:
+			}
+		}
+		w.WriteHeader(http.StatusOK)
+	})
+
+	wsMux.HandleFunc("GET /herl-events", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Expose-Headers", "Content-Type")
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+		w.Header().Set("X-Accel-Buffering", "no")
+
+		w.WriteHeader(http.StatusOK)
+
+		_, err := w.Write([]byte("event: connect\nid: 0\ndata: \n\n"))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.(http.Flusher).Flush()
+
+		listeners++
+		defer func() { listeners-- }()
+		i := 0
+		for {
+			i++
+			select {
+			case <-r.Context().Done():
+				return
+			case <-events:
+				_, err := fmt.Fprintf(w, "event: refresh\nid: %d\ndata: \n\n", i)
+				if err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+					return
+				}
+				w.(http.Flusher).Flush()
+			}
+		}
+	})
+
+	err := http.ListenAndServe(wsBind, wsMux)
+	if err != nil {
+		return errors.Join(
+			errors.New("failed to bind to websocket address, "+
+				"this address can be set with the -ws-addr flag"),
+			err)
+	}
+	return nil
+}
