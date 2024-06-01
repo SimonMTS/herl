@@ -8,11 +8,16 @@ with any backend language or framework.
 
 Refreshes can be triggered with `herl -n` or by manually POSTing to `herl`s
 notification endpoint. Of course you probably want to automate this by
-integrating with your editor or an external file-watcher (like [entr][1]).
+integrating with your editor or an external file-watcher (the example directory
+uses [entr][1] for generic on-save reloading).
 
-<!-- video example, herl only -->
+In the below demo, because the index.html file is changed, `entr` calls
+`herl -n` which refreshes the browser, and `go run .` which restarts the
+application. While the application is building `herl` retries calling the
+origin server a few times until a connection can be established, so the browser
+only sees one refresh.
 
-<!-- video example, herl with entr -->
+![demo](./example/demo.gif)
 
 ## Usage
 
