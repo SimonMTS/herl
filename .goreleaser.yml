@@ -49,7 +49,7 @@ aurs:
       license: GPL-3.0-or-later
       private_key: "{{ .Env.HOME }}/.ssh/aur"
       git_url: ssh://aur@aur.archlinux.org/herl-bin.git
-      package: install -Dm755 "./herl" "${pkgdir}/usr/bin/herl"
+      package: install -Dm755 ./herl* "${pkgdir}/usr/bin/herl"
       commit_author:
           name: SimonMTS
           email: simon@s14.nl
