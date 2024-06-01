@@ -10,8 +10,6 @@ import (
 	"time"
 )
 
-// TODO: append if there is no body
-
 type URLs struct {
 	Notification,
 	Proxy,
@@ -24,15 +22,16 @@ const (
 	retries      = int(retryMaxTime / retryTimeout)
 
 	scriptTmpl = `
-<script>
-	/* Added by herl */
-	document.addEventListener("DOMContentLoaded", () =>
-		(new EventSource("%s/herl-events"))
-			.addEventListener("refresh", () => location.reload()))
-</script>
-</body>
-`
+	<script>
+		/* Added by herl */
+		document.addEventListener("DOMContentLoaded", () =>
+			(new EventSource("%s/herl-events"))
+				.addEventListener("refresh", () => location.reload()))
+	</script>
+	`
 )
+
+var endBodyTag = []byte("</body>")
 
 func startProxyServer(quiet bool, urls URLs) error {
 	script := fmt.Appendf(nil, scriptTmpl, urls.Notification)
@@ -66,7 +65,7 @@ func proxyHandler(
 		req.Host = origin.Host
 		req.RequestURI = ""
 		req.Header.Set("X-Forwarded-For", req.RemoteAddr)
-		// Replacing the body is complecated by compression, so disable it
+		// Replacing the body is complicated by compression, so disable it
 		req.Header.Set("Accept-Encoding", "")
 
 		resp, err := callOrigin(req)
@@ -77,6 +76,7 @@ func proxyHandler(
 
 		for key, vals := range resp.Header {
 			if key == "Content-Length" {
+				// We are changing the body, so this would be incorrect
 				continue
 			}
 			for _, val := range vals {
@@ -91,7 +91,14 @@ func proxyHandler(
 			return
 		}
 
-		body = bytes.Replace(body, []byte("</body>"), script, 1)
+		if bytes.Contains(body, endBodyTag) {
+			body = bytes.Replace(
+				body, endBodyTag,
+				append(script, endBodyTag...),
+				1)
+		} else {
+			body = append(body, script...)
+		}
 
 		w.WriteHeader(resp.StatusCode)
 		_, err = w.Write(body)
