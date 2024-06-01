@@ -4,18 +4,13 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"io"
-	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
-	"sync"
-
-	"s14.nl/herl/server"
 )
 
 func main() {
-	var notifyFlag, serveFlag, quietFlag, debugFlag bool
+	var notifyFlag, serveFlag, quietFlag bool
 	var originUrl, proxyUrl, notifUrl string
 
 	flag.BoolVar(&notifyFlag, "notify", false,
@@ -42,28 +37,7 @@ func main() {
 	flag.BoolVar(&quietFlag, "quiet", false,
 		"Do not output anything to stdout.")
 
-	flag.BoolVar(&debugFlag, "debug", false,
-		"Print debug logging (pipe to jq for readable output).")
-
 	flag.Parse()
-
-	if debugFlag {
-		quietFlag = true
-		slog.SetDefault(slog.New(slog.NewJSONHandler(
-			os.Stdout,
-			&slog.HandlerOptions{
-				Level: slog.LevelDebug,
-			})))
-	}
-
-	slog.Debug("parsed flags",
-		"notifyFlag", notifyFlag,
-		"serveFlag", serveFlag,
-		"quietFlag", quietFlag,
-		"debugFlag", debugFlag,
-		"originUrl", originUrl,
-		"proxyUrl", proxyUrl,
-		"notifUrl", notifUrl)
 
 	err := run(
 		notifyFlag, serveFlag, quietFlag,
@@ -84,7 +58,7 @@ func run(
 				"see -help for details")
 	}
 
-	urls := server.Urls{}
+	urls := URLs{}
 	err := error(nil)
 
 	urls.Origin, err = url.Parse(originUrl)
@@ -109,7 +83,7 @@ func run(
 	case notifyFlag:
 		return notify(urls.Notification)
 	case serveFlag:
-		return Serve(quietFlag, urls)
+		return serve(quietFlag, urls)
 	default:
 		return errors.New(
 			"one of -serve or -notify (-n) must be specified, " +
@@ -118,7 +92,6 @@ func run(
 }
 
 func notify(url *url.URL) error {
-	slog.Debug("sending notification post", "url", url)
 	resp, err := http.Post(url.String(), "", nil)
 	if err != nil {
 		return errors.Join(
@@ -128,34 +101,27 @@ func notify(url *url.URL) error {
 			err)
 	}
 	if resp.StatusCode != 200 {
-		body, _ := io.ReadAll(resp.Body)
-		slog.Debug("notification post failed",
-			"status", resp.Status,
-			"body", string(body))
 		return fmt.Errorf(
 			"something went wrong with the notification server: %s",
 			resp.Status)
 	}
-	slog.Debug("notification post was successful",
-		"status", resp.Status)
 	return nil
 }
 
-func Serve(quiet bool, addrs server.Urls) (err error) {
-	wg := &sync.WaitGroup{}
-	wg.Add(1)
-	// If either of these go routines fails we should return
+func serve(quiet bool, urls URLs) (err error) {
+	wait := make(chan struct{}, 2)
+	// If either of these go routines fail we should return
 
 	go func() {
-		err = server.Proxy(quiet, addrs)
-		wg.Done()
+		err = startProxyServer(quiet, urls)
+		wait <- struct{}{}
 	}()
 
 	go func() {
-		err = server.Notification(addrs.Notification)
-		wg.Done()
+		err = startNotifServer(urls.Notification)
+		wait <- struct{}{}
 	}()
 
-	wg.Wait()
+	<-wait
 	return err
 }
