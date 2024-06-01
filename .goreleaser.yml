@@ -1,0 +1,52 @@
+# To test locally:     goreleaser release --snapshot --clean
+# To actually release: goreleaser release --clean
+#
+# Notes:
+#  - The github token might have expired
+#    https://goreleaser.com/scm/github/
+version: 1
+
+project_name: herl
+
+builds:
+    - env:
+          - CGO_ENABLED=0
+      goos:
+          - linux
+          - windows
+          - darwin
+
+archives:
+    - format: binary
+      files:
+          - none*
+
+env_files:
+    github_token: ~/.pki/github_token
+
+nfpms:
+    - package_name: herl
+      homepage: https://github.com/SimonMTS/herl
+      maintainer: SimonMTS <simon at s14 dot nl>
+      description: A minimal and scriptable way to refresh a webpage
+      license: GPL-3.0
+      formats:
+          - deb
+          - rpm
+          - apk
+      suggests:
+          - entr
+
+aurs:
+    - name: herl-bin
+      homepage: https://github.com/SimonMTS/herl
+      description: A minimal and scriptable way to refresh a webpage
+      maintainers:
+          - SimonMTS <simon at s14 dot nl>
+      license: GPL-3.0-or-later
+      private_key: ~/.ssh/aur
+      git_url: ssh://aur@aur.archlinux.org/herl-bin.git
+      package: install -Dm755 "./herl" "${pkgdir}/usr/bin/herl"
+      commit_author:
+          name: SimonMTS
+          email: simon@s14.nl
