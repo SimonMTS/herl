@@ -21,6 +21,9 @@ archives:
       files:
           - none*
 
+changelog:
+    disable: true
+
 env_files:
     github_token: ~/.pki/github_token
 
@@ -44,7 +47,7 @@ aurs:
       maintainers:
           - SimonMTS <simon at s14 dot nl>
       license: GPL-3.0-or-later
-      private_key: ~/.ssh/aur
+      private_key: "{{ .Env.HOME }}/.ssh/aur"
       git_url: ssh://aur@aur.archlinux.org/herl-bin.git
       package: install -Dm755 "./herl" "${pkgdir}/usr/bin/herl"
       commit_author:
