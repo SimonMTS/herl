@@ -37,10 +37,10 @@ example.
 
 Using the Go toolchain: `go install s14.nl/herl@latest`
 
-<!-- It's in the AUR as `herl`, so for example `yay -S herl` -->
+From the AUR as `herl-bin`, so e.g. `yay -S herl-bin`
 
-<!-- Or download a binaries from the -->
-<!-- [github releases page](https://github.com/SimonMTS/herl/releases). -->
+The [github releases page](https://github.com/SimonMTS/herl/releases) has downloads in the form of:
+`.deb`, `.rpm`, and `.apk` packages, and plain binaries.
 
 ## Prior art
 
