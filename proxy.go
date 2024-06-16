@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 )
 
@@ -61,7 +62,6 @@ func proxyHandler(
 	return func(w http.ResponseWriter, req *http.Request) {
 		req.URL.Scheme = origin.Scheme
 		req.URL.Host = origin.Host
-		req.URL.Path = origin.Path
 		req.Host = origin.Host
 		req.RequestURI = ""
 		req.Header.Set("X-Forwarded-For", req.RemoteAddr)
@@ -91,13 +91,16 @@ func proxyHandler(
 			return
 		}
 
-		if bytes.Contains(body, endBodyTag) {
-			body = bytes.Replace(
-				body, endBodyTag,
-				append(script, endBodyTag...),
-				1)
-		} else {
-			body = append(body, script...)
+		ct := resp.Header.Get("Content-Type")
+		if strings.Contains(ct, "text/html") {
+			if bytes.Contains(body, endBodyTag) {
+				body = bytes.Replace(
+					body, endBodyTag,
+					append(script, endBodyTag...),
+					1)
+			} else {
+				body = append(body, script...)
+			}
 		}
 
 		w.WriteHeader(resp.StatusCode)
