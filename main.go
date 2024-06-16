@@ -9,8 +9,10 @@ import (
 	"os"
 )
 
+var version = "0.0.0"
+
 func main() {
-	var notifyFlag, serveFlag, quietFlag bool
+	var notifyFlag, serveFlag, quietFlag, versionFlag bool
 	var originUrl, proxyUrl, notifUrl string
 
 	flag.BoolVar(&notifyFlag, "notify", false,
@@ -37,7 +39,15 @@ func main() {
 	flag.BoolVar(&quietFlag, "quiet", false,
 		"Do not output anything to stdout.")
 
+	flag.BoolVar(&versionFlag, "version", false,
+		"Print the herl version and exit.")
+
 	flag.Parse()
+
+	if versionFlag {
+		fmt.Println(version)
+		return
+	}
 
 	err := run(
 		notifyFlag, serveFlag, quietFlag,

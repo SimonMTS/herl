@@ -4,7 +4,7 @@
 # Notes:
 #  - The github token might have expired
 #    https://goreleaser.com/scm/github/
-version: 1
+version: 2
 
 project_name: herl
 
